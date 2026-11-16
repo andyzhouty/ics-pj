@@ -2,6 +2,7 @@ import sys
 import json
 import struct
 
+
 # --- 常量定义 ---
 AOK, HLT, ADR, INS = 1, 2, 3, 4
 
@@ -12,22 +13,36 @@ I_HALT, I_NOP, I_RRMOVQ, I_IRMOVQ = 0, 1, 2, 3
 I_RMMOVQ, I_MRMOVQ, I_ALU, I_JMP = 4, 5, 6, 7
 I_CALL, I_RET, I_PUSHQ, I_POPQ = 8, 9, 10, 11
 
+
 class Y86Simulator:
     def __init__(self, mem_size=8192):
         self.REG_NAMES = {
-            0: "rax", 1: "rcx", 2: "rdx", 3: "rbx", 4: "rsp", 5: "rbp", 6: "rsi", 7: "rdi",
-            8: "r8", 9: "r9", 10: "r10", 11: "r11", 12: "r12", 13: "r13", 14: "r14"
+            0: "rax",
+            1: "rcx",
+            2: "rdx",
+            3: "rbx",
+            4: "rsp",
+            5: "rbp",
+            6: "rsi",
+            7: "rdi",
+            8: "r8",
+            9: "r9",
+            10: "r10",
+            11: "r11",
+            12: "r12",
+            13: "r13",
+            14: "r14",
         }
         self.mem_size = mem_size
         self.memory = bytearray(mem_size)
         self.PC = 0
         self.STAT = AOK
-        
+
         self.REG = {i: 0 for i in range(15)}
-        self.REG[RNONE] = 0 
-        
+        self.REG[RNONE] = 0
+
         self.CC = {"ZF": 1, "SF": 0, "OF": 0}
-        
+
         # CPU 内部暂存器 / 数据通路状态变量 (用于在多周期状态机的各阶段间传递当前指令的数据)
         self.icode = I_NOP
         self.ifun = 0
@@ -50,26 +65,26 @@ class Y86Simulator:
         if val & 0x8000000000000000:
             val -= 0x10000000000000000
         return val
-    
+
     def sign_extend(self, val, bits=64):
         """将指定位数的无符号整数转换为补码有符号整数"""
         sign_bit = 1 << (bits - 1)
         return (val & (sign_bit - 1)) - (val & sign_bit)
-    
+
     def uint64(self, val):
         """将数值截断为 64 位无符号整数"""
         return val & 0xFFFFFFFFFFFFFFFF
-        
+
     def read_mem(self, addr, size):
         """从指定内存地址读取指定字节数的数据，若地址越界则触发 ADR 异常"""
         if addr < 0 or addr + size > self.mem_size:
             self.STAT = ADR
             return 0
-        data = self.memory[addr : addr+size]
+        data = self.memory[addr : addr + size]
         if size == 1:
             return data[0]
         elif size == 8:
-            return struct.unpack('<Q', data)[0]
+            return struct.unpack("<Q", data)[0]
         return 0
 
     def write_mem(self, addr, size, val):
@@ -78,22 +93,42 @@ class Y86Simulator:
             self.STAT = ADR
             return
         if size == 8:
-            self.memory[addr : addr+size] = struct.pack('<Q', self.uint64(val))
-            
+            self.memory[addr : addr + size] = struct.pack("<Q", self.uint64(val))
+
     def check_cond(self, ifun):
         """根据当前条件码寄存器，判断跳转或条件传送是否满足"""
         zf, sf, of = self.CC["ZF"], self.CC["SF"], self.CC["OF"]
-        if ifun == 0: return True                  
-        if ifun == 1: return (sf ^ of) | zf        
-        if ifun == 2: return sf ^ of               
-        if ifun == 3: return zf                    
-        if ifun == 4: return not zf                
-        if ifun == 5: return not (sf ^ of)         
-        if ifun == 6: return not (sf ^ of) and not zf 
-        return False
+        if ifun == 0:
+            return True
+        if ifun == 1:
+            return (sf ^ of) | zf
+        if ifun == 2:
+            return sf ^ of
+        if ifun == 3:
+            return zf
+        if ifun == 4:
+            return not zf
+        if ifun == 5:
+            return not (sf ^ of)
+        if ifun == 6:
+            return not (sf ^ of) and not zf
+
+    # 自行编写的辅助方法
+
+    def split4(self, b):
+        """将某一个字节拆成前四位和后四位"""
+        return (b >> 4, b & 0x0F)
+
+    def to_signed64_all(self, *numbers):
+        """将多个数字转为有符号64位"""
+        return tuple(self.sign_extend(n) for n in numbers)
+
+    def cmatch(self, *options):
+        """匹配一个或多个指令代码"""
+        return self.icode in options
 
     # ---------------- 核心 FSM 逻辑 (需实现) ----------------
-    
+
     def fetch(self):
         """
         取指阶段 (Fetch)
@@ -106,22 +141,51 @@ class Y86Simulator:
         4. 如果 need_reg，读取寄存器指示符并分别赋值给 self.rA 和 self.rB。
         5. 如果 need_valC，读取 8 字节常数赋值给 self.valC。
         6. 计算出下一条指令的地址，并赋值给 self.valP。
-        
+
         提示: 使用 read_mem(addr, size) 读取内存。注意更新地址偏移量。
         """
         if self.PC < 0 or self.PC >= self.mem_size:
             self.STAT = ADR
             return
-            
+
         byte0 = self.read_mem(self.PC, 1)
-        if self.STAT != AOK: return
-        
+        if self.STAT != AOK:
+            return
+
         # 已经为你提取出了当前指令的操作码，请保留下方两条赋值，继续向下实现
-        self.icode = byte0 >> 4
-        self.ifun = byte0 & 0x0F
-        
-        # TODO: 请在此处实现取指阶段的完整逻辑
-        pass
+        # self.icode = byte0 >> 4
+        # self.ifun = byte0 & 0x0F
+        # 用 split4 静态方法等价替换上述两行
+        self.icode, self.ifun = self.split4(byte0)
+
+        # 盒子跨周期保留，本行用于复位，以防止上一条指令的残值影响调试
+        self.rA, self.rB, self.valC = RNONE, RNONE, 0
+        if self.cmatch(I_HALT):
+            self.STAT = HLT
+            return
+        elif self.cmatch(I_NOP, I_RET):
+            self.valP = self.PC + 1
+        elif self.cmatch(I_RRMOVQ, I_ALU, I_PUSHQ, I_POPQ):
+            self.rA, self.rB = self.split4(self.read_mem(self.PC + 1, 1))
+            if self.STAT != AOK:
+                return
+            self.valP = self.PC + 2
+        elif self.cmatch(I_JMP, I_CALL):
+            self.valC = self.read_mem(self.PC + 1, 8)
+            if self.STAT != AOK:
+                return
+            self.valP = self.PC + 9
+        elif self.cmatch(I_IRMOVQ, I_RMMOVQ, I_MRMOVQ):
+            self.rA, self.rB = self.split4(self.read_mem(self.PC + 1, 1))
+            if self.STAT != AOK:
+                return
+            self.valC = self.read_mem(self.PC + 2, 8)
+            if self.STAT != AOK:
+                return
+            self.valP = self.PC + 10
+        else:  # 不在 0~11 范围内
+            self.STAT = INS
+            return
 
     def decode(self):
         """
@@ -132,11 +196,21 @@ class Y86Simulator:
         2. 从寄存器文件 (self.REG) 中读取 srcA 和 srcB 的值，分别赋值给 self.valA 和 self.valB。
            如果 src 不存在 (RNONE)，则读取值为 0。
         """
-        srcA = RNONE
-        srcB = RNONE
-        
-        # TODO: 请在此处实现译码阶段的完整逻辑，正确设置 srcA 和 srcB，并读取赋值给 valA 和 valB
-        pass
+        srcA, srcB = RNONE, RNONE
+
+        if self.cmatch(I_RRMOVQ):
+            srcA = self.rA
+        elif self.cmatch(I_ALU, I_RMMOVQ):
+            srcA, srcB = self.rA, self.rB
+        elif self.cmatch(I_MRMOVQ):
+            srcB = self.rB
+        elif self.cmatch(I_CALL, I_RET, I_POPQ):
+            srcA, srcB = RSP, RSP
+        elif self.cmatch(I_PUSHQ):
+            srcA, srcB = self.rA, RSP
+        else:  # self.icode in (I_HALT, I_NOP, I_IRMOVQ, I_JMP,):
+            pass
+        self.valA, self.valB = self.REG[srcA], self.REG[srcB]
 
     def execute(self):
         """
@@ -157,12 +231,59 @@ class Y86Simulator:
         """
         self.valE = 0
         self.Cnd = False
-        
+
         aluA = 0
         aluB = 0
-        
-        # TODO: 请在此处实现执行阶段的完整逻辑，包含 ALU 运算、条件码更新和分支跳转判定
-        pass
+
+        if self.cmatch(I_ALU):
+            aluA, aluB = self.valA, self.valB
+            match self.ifun:
+                case 0:  # addq
+                    result, signed_a, signed_b = self.to_signed64_all(
+                        aluB + aluA, aluA, aluB
+                    )
+                    self.CC["OF"] = int(
+                        (signed_b > 0 and signed_a > 0 and result < 0)
+                        or (signed_b < 0 and signed_a < 0 and result > 0)
+                    )
+                case 1:  # subq
+                    result, signed_a, signed_b = self.to_signed64_all(
+                        aluB - aluA, aluA, aluB
+                    )
+                    self.CC["OF"] = int(
+                        (signed_b > 0 and signed_a < 0 and result < 0)
+                        or (signed_b < 0 and signed_a > 0 and result > 0)
+                    )
+                case 2:  # andq
+                    result = self.sign_extend(aluB & aluA)
+                    self.CC["OF"] = 0
+                case 3:  # xorq
+                    result = self.sign_extend(aluB ^ aluA)
+                    self.CC["OF"] = 0
+                case _:
+                    # 非法 ifun，正常不会走到这里，用于保证不崩溃
+                    result = 0
+            self.CC["ZF"] = int(result == 0)
+            self.CC["SF"] = int(result < 0)
+            self.valE = result
+            return
+
+        if self.cmatch(I_JMP):
+            self.Cnd = self.check_cond(self.ifun)
+            return
+
+        if self.cmatch(I_RMMOVQ, I_MRMOVQ):
+            aluA, aluB = self.valC, self.valB
+        elif self.cmatch(I_RRMOVQ):
+            aluA = self.valA
+            self.Cnd = self.check_cond(self.ifun)
+        elif self.cmatch(I_IRMOVQ):
+            aluA = self.valC
+        elif self.cmatch(I_CALL, I_PUSHQ):
+            aluA, aluB = -8, self.valB
+        elif self.cmatch(I_POPQ, I_RET):
+            aluA, aluB = 8, self.valB
+        self.valE = self.uint64(aluA + aluB)
 
     def memory_stage(self):
         """
@@ -176,9 +297,18 @@ class Y86Simulator:
            如果是，调用 self.read_mem(addr, 8) 读取 8 字节数据，并赋值给 self.valM。
         """
         self.valM = 0
-        
-        # TODO: 请在此处实现访存阶段的完整读写逻辑
-        pass
+
+        # 写内存
+        if self.cmatch(I_RMMOVQ, I_PUSHQ):
+            self.write_mem(self.valE, 8, self.valA)
+        elif self.cmatch(I_CALL):
+            self.write_mem(self.valE, 8, self.valP)
+
+        # 读内存
+        elif self.cmatch(I_MRMOVQ):
+            self.valM = self.read_mem(self.valE, 8)
+        elif self.cmatch(I_POPQ, I_RET):
+            self.valM = self.read_mem(self.valA, 8)
 
     def write_back(self):
         """
@@ -191,11 +321,22 @@ class Y86Simulator:
            注意：依据 CS:APP Y86-64 异常栈语义，弹栈到 %rsp 时（如 popq %rsp），
            如果 dstE 和 dstM 同为 %rsp，需确保从内存读出的 valM 能最终覆盖掉运算得出的 valE。
         """
-        dstE = RNONE
-        dstM = RNONE
-        
-        # TODO: 请在此处实现寄存器写回的完整逻辑
-        pass
+        dstE, dstM = RNONE, RNONE
+
+        if self.cmatch(I_IRMOVQ, I_ALU) or (
+            self.cmatch(I_RRMOVQ) and (self.ifun == 0 or self.Cnd)
+        ):
+            dstE = self.rB
+        elif self.cmatch(I_PUSHQ, I_POPQ, I_CALL, I_RET):
+            dstE = RSP
+
+        if self.cmatch(I_MRMOVQ, I_POPQ):
+            dstM = self.rA
+
+        if dstE != RNONE:
+            self.REG[dstE] = self.valE
+        if dstM != RNONE:
+            self.REG[dstM] = self.valM
 
     def update_pc(self):
         """
@@ -207,15 +348,19 @@ class Y86Simulator:
         - ret 指令：PC 更新为从栈中弹出的返回地址 (valM)。
         - 其它默认情况：PC 顺序更新为下一条指令的地址 (valP)。
         """
-        # TODO: 请在此处实现 PC 更新逻辑
-        pass
+        if self.cmatch(I_CALL) or (self.cmatch(I_JMP) and self.Cnd):
+            self.PC = self.valC
+        elif self.cmatch(I_RET):
+            self.PC = self.valM
+        else:
+            self.PC = self.valP
 
     # ---------------- JSON 序列化输出 ----------------
     def dump_state(self):
         """将当前状态转存为字典"""
         mem_dump = {}
         for addr in range(0, self.mem_size, 8):
-            val = struct.unpack('<q', self.memory[addr:addr+8])[0]
+            val = struct.unpack("<q", self.memory[addr : addr + 8])[0]
             if val != 0:
                 mem_dump[str(addr)] = val
 
@@ -223,8 +368,12 @@ class Y86Simulator:
             "CC": dict(self.CC),
             "MEM": mem_dump,
             "PC": self.PC,
-            "REG": {self.REG_NAMES[k]: self.to_signed64(v) for k, v in sorted(self.REG.items()) if k != RNONE},
-            "STAT": self.STAT
+            "REG": {
+                self.REG_NAMES[k]: self.to_signed64(v)
+                for k, v in sorted(self.REG.items())
+                if k != RNONE
+            },
+            "STAT": self.STAT,
         }
         self.trace.append(state)
 
@@ -232,11 +381,12 @@ class Y86Simulator:
     def load_program(self, file_obj):
         """解析器 Parser"""
         for line in file_obj:
-            idx = line.find('|')
+            idx = line.find("|")
             code_part = line[:idx].strip() if idx != -1 else line.strip()
-            if not code_part: continue
-            if ':' in code_part:
-                addr_str, data_str = code_part.split(':', 1)
+            if not code_part:
+                continue
+            if ":" in code_part:
+                addr_str, data_str = code_part.split(":", 1)
                 addr_str, data_str = addr_str.strip(), data_str.strip()
                 if addr_str and data_str:
                     addr = int(addr_str, 16)
@@ -249,24 +399,25 @@ class Y86Simulator:
         """主循环：时钟步进"""
         while self.STAT == AOK:
             self.fetch()
-            if self.STAT != AOK: 
+            if self.STAT != AOK:
                 self.dump_state()
                 break
-                
+
             self.decode()
             self.execute()
             self.memory_stage()
-            
+
             self.write_back()
-            
-            if self.STAT != AOK: 
+
+            if self.STAT != AOK:
                 self.dump_state()
                 break
-                
+
             self.update_pc()
             self.dump_state()
-            
+
         print(json.dumps(self.trace, indent=4))
+
 
 if __name__ == "__main__":
     sim = Y86Simulator()

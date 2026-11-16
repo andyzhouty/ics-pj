@@ -1,2 +1,6 @@
 temp_answer
 *.o
+
+artifacts/
+__pycache__/
+AGENTS.md
