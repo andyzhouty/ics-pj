@@ -16,30 +16,29 @@ I_CALL, I_RET, I_PUSHQ, I_POPQ = 8, 9, 10, 11
 
 class Y86Simulator:
     def __init__(self, mem_size=8192):
-        self.REG_NAMES = {
-            0: "rax",
-            1: "rcx",
-            2: "rdx",
-            3: "rbx",
-            4: "rsp",
-            5: "rbp",
-            6: "rsi",
-            7: "rdi",
-            8: "r8",
-            9: "r9",
-            10: "r10",
-            11: "r11",
-            12: "r12",
-            13: "r13",
-            14: "r14",
-        }
+        self.REG_NAMES = (
+            "rax",
+            "rcx",
+            "rdx",
+            "rbx",
+            "rsp",
+            "rbp",
+            "rsi",
+            "rdi",
+            "r8",
+            "r9",
+            "r10",
+            "r11",
+            "r12",
+            "r13",
+            "r14",
+        )
         self.mem_size = mem_size
         self.memory = bytearray(mem_size)
         self.PC = 0
         self.STAT = AOK
 
-        self.REG = {i: 0 for i in range(15)}
-        self.REG[RNONE] = 0
+        self.REG = [0] * 16
 
         self.CC = {"ZF": 1, "SF": 0, "OF": 0}
 
@@ -370,7 +369,7 @@ class Y86Simulator:
             "PC": self.PC,
             "REG": {
                 self.REG_NAMES[k]: self.to_signed64(v)
-                for k, v in sorted(self.REG.items())
+                for k, v in enumerate(self.REG)
                 if k != RNONE
             },
             "STAT": self.STAT,
